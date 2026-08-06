@@ -10,11 +10,11 @@ def create_user(user: schemas.UserCreate, db) -> schemas.UserResponse:
     # TODO: core.models 및 DB 연동 시 아래 주석 해제 및 적용
     # db_user = db.query(models.User).filter(models.User.username == user.username).first()
     # if db_user:
-    #     raise HTTPException(status_code=400, detail="Username already registered")
+    #     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already registered")
     
     # [임시 더미 로직] "admin"이라는 아이디는 이미 존재한다고 가정하여 에러 발생 테스트
     if user.username == "admin":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already registered")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already registered")
 
     # 비밀번호 안전하게 암호화
     hashed_password = security.get_password_hash(user.password)
