@@ -1,12 +1,24 @@
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from datetime import datetime
+
+from auth import validators
 
 class UserCreate(BaseModel):
     """회원가입 시 요청받을 데이터"""
     username: str
     password: str
+
+    @field_validator("username")
+    @classmethod
+    def check_username(cls, v: str) -> str:
+        return validators.validate_username(v)
+
+    @field_validator("password")
+    @classmethod
+    def check_password(cls, v: str) -> str:
+        return validators.validate_password(v)
 
 class UserResponse(BaseModel):
     """응답으로 내려줄 데이터 (비밀번호 제외)"""

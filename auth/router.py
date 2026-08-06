@@ -1,12 +1,12 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from fastapi.security import OAuth2PasswordRequestForm
-from auth import schemas, service
+from auth import schemas, service, validators
 from auth.dependencies import get_db
 
 # 라우터 초기 설정
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-@router.post("/register", response_model=schemas.UserResponse)
+@router.post("/register", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
 def register_user(user: schemas.UserCreate, db = Depends(get_db)):
     """
     회원가입 API: 
@@ -30,3 +30,8 @@ def login_for_access_token(
         password=form_data.password, 
         db=db
     )
+
+@router.get("/validation-rules")
+def get_validation_rules():
+    """프론트엔드가 회원가입 폼 검증에 사용할 규칙을 반환합니다."""
+    return validators.get_validation_rules()
