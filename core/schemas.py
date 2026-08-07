@@ -1,37 +1,55 @@
-from pydantic import BaseModel, Field
-from datetime import datetime
 from typing import Optional
 
-# 회원가입 시 요청받는 데이터 구조
-class UserCreate(BaseModel):
-    username: str = Field(..., min_length=3, max_length=50) # 아이디는 3~50자 제한
-    password: str = Field(..., min_length=4)                # 비밀번호는 4자 이상 제한
+from pydantic import BaseModel, ConfigDict, field_validator, Field
+from datetime import datetime
 
-# 클라이언트로 반환할 사용자 정보 구조 (비밀번호 제외)
+from auth import validators
+
+class UserCreate(BaseModel):
+    """회원가입 시 요청받을 데이터"""
+    username: str
+    password: str
+
+    @field_validator("username")
+    @classmethod
+    def check_username(cls, v: str) -> str:
+        return validators.validate_username(v)
+
+    @field_validator("password")
+    @classmethod
+    def check_password(cls, v: str) -> str:
+        return validators.validate_password(v)
+
 class UserResponse(BaseModel):
+    """응답으로 내려줄 데이터 (비밀번호 제외)"""
     id: int
     username: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True  # ORM 모델(SQLAlchemy)을 Pydantic 객체로 변환할 수 있게 설정
+    # SQLAlchemy 모델(ORM)을 Pydantic 모델로 변환할 수 있도록 설정
+    model_config = ConfigDict(from_attributes=True) # Pydantic v2 표준 방식
 
-# JWT 토큰 반환 구조
 class Token(BaseModel):
+    """로그인 성공 시 프론트엔드에 전달할 JWT 토큰 스키마"""
     access_token: str
     token_type: str
 
+# 토큰 디코딩 후 payload 검증용 (선택이지만 흔히 씀)
+class TokenData(BaseModel):
+    username: Optional[str] = None
+
 # 채팅 메시지 요청 데이터 구조
+    # min_length, max_length: 최소 및 최대 길이 검증
+    # Field는 pydantic V2에서 권장하는 방식 (Field(제약조건, ...))
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=1000) # 메시지는 비어있지 않아야 함
 
 # 채팅 내역 반환 데이터 구조
 class ChatResponse(BaseModel):
     id: int
-    user_message: str
-    ai_response: Optional[str] = None
-    error_status: Optional[str] = None
-    created_at: datetime
+    user_message: str # 유저가 보낸 메시지
+    ai_response: Optional[str] = None # ai가 생성한 응답 
+    error_status: Optional[str] = None # 에러 발생시 에러 상태 코드
+    created_at: datetime # 생성 시각
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
