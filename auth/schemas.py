@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, Field
 from datetime import datetime
 
 from auth import validators
@@ -37,3 +37,22 @@ class Token(BaseModel):
 # 토큰 디코딩 후 payload 검증용 (선택이지만 흔히 씀)
 class TokenData(BaseModel):
     username: Optional[str] = None
+
+# 채팅 메시지 요청 데이터 구조
+    # min_length, max_length: 최소 및 최대 길이 검증
+    # Field는 pydantic V2에서 권장하는 방식 (Field(제약조건, ...))
+class ChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=1000) # 메시지는 비어있지 않아야 함
+
+# 채팅 내역 반환 데이터 구조
+class ChatResponse(BaseModel):
+    id: int
+    user_message: str # 유저가 보낸 메시지
+    ai_response: Optional[str] = None # ai가 생성한 응답 
+    error_status: Optional[str] = None # 에러 발생시 에러 상태 코드
+    created_at: datetime # 생성 시각
+
+    # SQLAlchemy ORM 객체를 Pydantic 모델로 변환할 수 있도록 설정
+    # from_attributes=True: SQLAlchemy 모델의 인스턴스를 Pydantic 모델로 변환할 때, 모델의 속성을 그대로 가져옴
+    class Config:
+        from_attributes = True
