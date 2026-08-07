@@ -20,7 +20,53 @@ async def generate_response(prompt: str, context: list = None) -> str:
         logger.warning("Gemini API Key is not set. Returning dummy response.")
         return "I am a dummy AI. Please configure GEMINI_API_KEY in your .env file to enable real AI responses."
 
-    
+
+    # 내부 비동기 호출 함수 정의
+    async def _call_api():
+        client = genai.Client(api_key=settings.gemini_api_key)
+        
+        # 모델에 전달할 대화 내역 리스트 구성
+        contents = []
+        if context:
+            # DB에서 가져온 최근 대화 기록을 순회하며 역할(role)에 맞춰 추가
+            for log in context:
+                # 사용자의 질문
+                contents.append(
+                    types.Content(
+                        role="user",
+                        parts=[types.Part.from_text(text=log.user_message)]
+                    )
+                )
+                # AI의 응답 (정상적으로 존재할 경우에만)
+                if log.ai_response:
+                    contents.append(
+                        types.Content(
+                            role="model",
+                            parts=[types.Part.from_text(text=log.ai_response)]
+                        )
+                    )
+        
+        # 현재 사용자가 방금 입력한 프롬프트(질문) 추가
+        contents.append(
+            types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=prompt)]
+            )
+        )
+
+        try:
+            # I/O 바운드 작업인 외부 API 호출을 스레드풀에서 실행하여 비동기 처리
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model='gemini-2.5-flash',
+                contents=contents
+            )
+            return response.text
+        except Exception as e:
+            logger.error(f"Error calling AI API: {str(e)}")
+            raise e
+
+
     try:
         # 비동기 함수(_call_api)를 주어진 제한 시간(timeout) 동안만 대기
         result = await asyncio.wait_for(_call_api(), timeout=settings.ai_timeout_seconds)
