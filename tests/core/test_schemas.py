@@ -18,3 +18,16 @@ def test_user_response_schema():
 def test_token_schema():
     token = Token(access_token="eyJ...", token_type="bearer")
     assert token.token_type == "bearer"
+
+from core.schemas import ChatRequest, ChatResponse
+
+def test_chat_request_validation():
+    req = ChatRequest(message="Hello AI")
+    assert req.message == "Hello AI"
+    with pytest.raises(ValidationError):
+        ChatRequest(message="")
+
+def test_chat_response_schema():
+    res = ChatResponse(id=1, user_message="Hello AI", created_at=datetime.now())
+    assert res.ai_response is None
+    assert res.error_status is None
