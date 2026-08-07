@@ -25,7 +25,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     """주어진 데이터(페이로드)를 바탕으로 JWT Access Token을 생성합니다."""
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.now(datetime.timezone.utc) + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
     
