@@ -61,3 +61,14 @@ async def chat(request: schemas.ChatRequest, db: Session = Depends(get_db), curr
         logger.info(f"db_save_success user_id={current_user.id} chat_id={new_chat.id}")
         
     return new_chat
+
+
+
+@router.get("/me/chats", response_model=list[schemas.ChatResponse])
+def get_my_chats(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    """
+    내 채팅 기록 조회 API (인증 필요):
+    현재 로그인된 사용자의 모든 과거 채팅 로그를 시간순(오름차순)으로 반환합니다.
+    """
+    chats = db.query(models.ChatLog).filter(models.ChatLog.user_id == current_user.id).order_by(models.ChatLog.id.asc()).all()
+    return chats
