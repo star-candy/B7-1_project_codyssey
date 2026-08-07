@@ -22,4 +22,5 @@ class Settings(BaseSettings):
         env_file = ".env"
 
 # 설정 인스턴스 생성 (앱 전체에서 공유)
+# TDD 기반으로 환경 설정 구성 완료
 settings = Settings()
