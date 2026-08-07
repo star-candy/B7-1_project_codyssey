@@ -7,15 +7,13 @@ from core.config import settings
 # 로거 초기화 (터미널 관련 로그 출력 제어)
 logger = logging.getLogger("chatbot")
 
-
+# gemini api를 호출하여 ai 응답을 생성, 반환하는 함수
+# 이전 대화 기록 (context)를 넣어 문맥을 유지함. (최대 과거 채팅 이력 3개까지)
+# 사용자의 최신 질문 (prompt)을 함께 제공 
+# 시간 내 미응답 시 타임아웃 발생시킴 
 async def generate_response(prompt: str, context: list = None) -> str:
-    """
-    Gemini API를 호출하여 AI의 응답을 생성하는 메인 함수입니다.
-    이전 대화 기록(context)을 모델에 함께 넘겨주어 문맥(Context)을 유지하게 합니다.
-    설정된 시간 내에 응답이 오지 않으면 타임아웃 예외를 발생시킵니다.
-    """
     
-    # API 키가 환경 변수에 설정되어 있지 않은 경우 더미 응답 반환 (개발용)
+    # API 키가 환경 변수에 설정되어 있지 않은 경우 더미 응답 반환
     if not settings.gemini_api_key:
         logger.warning("Gemini API Key is not set. Returning dummy response.")
         return "I am a dummy AI. Please configure GEMINI_API_KEY in your .env file to enable real AI responses."
@@ -23,9 +21,13 @@ async def generate_response(prompt: str, context: list = None) -> str:
 
     # 내부 비동기 호출 함수 정의
     async def _call_api():
+        # gemini api key를 기반으로 gemini client 초기화
         client = genai.Client(api_key=settings.gemini_api_key)
         
         # 모델에 전달할 대화 내역 리스트 구성
+        # genai sdk 자료구조 types에 기반함 
+            # types.contens는 role과 parts로 구분됨
+        # (과거 대화내역, 최신 대화내역 순으로 contents 리스트에 저장)
         contents = []
         if context:
             # DB에서 가져온 최근 대화 기록을 순회하며 역할(role)에 맞춰 추가
@@ -56,6 +58,8 @@ async def generate_response(prompt: str, context: list = None) -> str:
 
         try:
             # I/O 바운드 작업인 외부 API 호출을 스레드풀에서 실행하여 비동기 처리
+            # 기본적으로 generate_content는 동기함수이므로 async, awit 비동기 처리 위한 추가 과정 필요
+            # asyncio.to_thread를 통해 동기 함수를 비동기함수처럼 동작시킬 수 있음 (타 워커 스레드에서 동작시킴)
             response = await asyncio.to_thread(
                 client.models.generate_content,
                 model='gemini-2.5-flash',
