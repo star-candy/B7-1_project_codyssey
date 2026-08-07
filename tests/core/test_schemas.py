@@ -1,4 +1,4 @@
-from core.schemas import UserCreate, UserResponse, Token
+from auth.schemas import UserCreate, UserResponse, Token
 from pydantic import ValidationError
 import pytest
 from datetime import datetime
@@ -19,7 +19,7 @@ def test_token_schema():
     token = Token(access_token="eyJ...", token_type="bearer")
     assert token.token_type == "bearer"
 
-from core.schemas import ChatRequest, ChatResponse
+from ai_chat.schemas import ChatRequest, ChatResponse
 
 def test_chat_request_validation():
     req = ChatRequest(message="Hello AI")

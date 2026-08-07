@@ -3,9 +3,8 @@ import os
 import logging
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-
-from core import models, schemas
-#core에서 추가된다고 가정하고 작성했습니다
+from ai_chat import schemas
+from core import models
 from core.database import get_db 
 from auth.security import get_current_user
 from ai_chat import service

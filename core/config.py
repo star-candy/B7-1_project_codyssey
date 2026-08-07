@@ -1,5 +1,5 @@
 import os
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # 애플리케이션 이름
@@ -17,9 +17,7 @@ class Settings(BaseSettings):
     # AI 응답 대기 시간 (초) - 타임아웃 처리에 사용
     ai_timeout_seconds: int = 10
 
-    class Config:
-        # 환경 변수를 읽어올 .env 파일 지정
-        env_file = ".env"
+    model_config = SettingsConfigDict(env_file=".env")
 
 # 설정 인스턴스 생성 (앱 전체에서 공유)
 # TDD 기반으로 환경 설정 구성 완료
