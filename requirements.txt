@@ -6,3 +6,4 @@ python-jose[cryptography]
 sqlalchemy
 pydantic
 python-multipart
+google-genai
