@@ -6,7 +6,7 @@ from jose import JWTError, jwt
 import bcrypt
 
 from auth.dependencies import get_db
-from auth.schemas import TokenData
+from core import models, schemas
 from core.config import settings
 
 def get_password_hash(password: str) -> str:
@@ -25,7 +25,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     """주어진 데이터(페이로드)를 바탕으로 JWT Access Token을 생성합니다."""
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.now(datetime.timezone.utc) + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
     
@@ -39,7 +39,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 # FastAPI의 보안 의존성 처리 객체 (토큰을 얻는 엔드포인트 URL 지정)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
-async def get_current_user(token: str = Depends(oauth2_scheme), db = Depends(get_db)):
+def get_current_user(token: str = Depends(oauth2_scheme), db = Depends(get_db)):
     """
     클라이언트가 보낸 JWT 토큰을 검증하고, 유효한 경우 현재 로그인된 사용자 객체를 반환합니다.
     """
@@ -55,20 +55,11 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db = Depends(get
         if username is None:
             raise credentials_exception
 
-        token_data = TokenData(username=username)
+        token_data = schemas.TokenData(username=username)
     except JWTError:
         raise credentials_exception
-    
-    # TODO: core.database 및 models 완성 시 실제 DB 조회 로직으로 변경해야 함
-    # user = db.query(models.User).filter(models.User.username == token_data.username).first()
-    # if user is None:
-    #     raise credentials_exception
-    # return user
 
-    # 현재는 DB 연동 전이므로, 테스트 통과를 위한 더미 유저 데이터를 반환합니다.
-    from datetime import datetime
-    return {
-        "id": 1,
-        "username": token_data.username,
-        "created_at": datetime.now()
-    }
+    user = db.query(models.User).filter(models.User.username == token_data.username).first()
+    if user is None:
+        raise credentials_exception
+    return user
