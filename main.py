@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from core.database import engine, Base
+from core import models  # noqa: F401 - Base.metadata 테이블 인식을 위한 모델 등록
 from auth.router import router as auth_router
 
 # 애플리케이션 시작 시 데이터베이스에 정의된 모든 테이블을 자동 생성합니다.
