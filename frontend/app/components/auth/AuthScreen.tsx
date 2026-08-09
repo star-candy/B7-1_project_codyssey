@@ -17,6 +17,7 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
+    // Refresh Cookie로 로그인 상태를 복구한 사용자는 채팅 화면으로 이동합니다.
     let active = true;
     authApi.restore().then((authenticated) => {
       if (!active) return;

@@ -15,6 +15,7 @@ export function ChatComposer({
   onSend,
 }: ChatComposerProps) {
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    // Enter는 전송하고 Shift+Enter는 줄바꿈으로 유지합니다.
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       onSend();

@@ -35,6 +35,7 @@ export function ChatMessageList({
       className="chat-body"
       ref={listRef}
       onScroll={() => {
+        // 목록 상단에 가까워지면 다음 과거 기록 페이지를 요청합니다.
         if ((listRef.current?.scrollTop ?? 100) < 56) onScrollTop();
       }}
       aria-live="polite"

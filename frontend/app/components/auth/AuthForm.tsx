@@ -24,6 +24,7 @@ export function AuthForm({ mode, onAuthenticated }: AuthFormProps) {
     if (submitting) return;
     setError("");
 
+    // API 요청 전에 비어 있는 필드와 비밀번호 확인 값을 우선 검사합니다.
     if (!username.trim() || !password || (isSignup && !passwordConfirm)) {
       setError(isSignup ? "모든 항목을 입력해 주세요." : "아이디와 비밀번호를 입력해 주세요.");
       return;
@@ -35,6 +36,7 @@ export function AuthForm({ mode, onAuthenticated }: AuthFormProps) {
 
     setSubmitting(true);
     try {
+      // 회원가입 성공 시 authApi가 로그인까지 처리하므로 동일한 완료 콜백을 사용합니다.
       if (isSignup) await authApi.signup(username.trim(), password);
       else await authApi.login(username.trim(), password);
       onAuthenticated();

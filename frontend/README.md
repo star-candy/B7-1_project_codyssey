@@ -8,7 +8,7 @@
 - React
 - TypeScript
 - Mona 웹 폰트
-- 외부 백엔드 API + JWT 인증 연동 준비
+- FastAPI 백엔드 API + JWT 인증 연동
 
 ## 로컬 실행
 
@@ -45,13 +45,12 @@ API 주소는 브라우저에 공개되는 값이므로 비밀키를 넣으면 �
 
 주요 경로:
 
-- `POST /api/auth/register`: 회원가입
+- `POST /api/auth/signup`: 회원가입
 - `POST /api/auth/login`: 로그인
-- `GET /api/auth/validation-rules`: 회원가입 검증 규칙
-- `POST /api/auth/refresh`: 토큰 갱신, 백엔드 추가 필요
-- `POST /api/auth/logout`: 로그아웃, 백엔드 추가 필요
+- `POST /api/auth/refresh`: HttpOnly cookie 기반 토큰 갱신
+- `POST /api/auth/logout`: 로그아웃
 - `POST /api/chat`: AI 메시지 전송
-- `GET /api/me/chats`: 과거 기록, cursor 페이지네이션 추가 필요
+- `GET /api/me/chats`: 전체 과거 기록 조회
 
 ## JWT와 공개 서비스 보안
 

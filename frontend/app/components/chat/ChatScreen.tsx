@@ -10,7 +10,7 @@ import { WindowTitlebar } from "../common/WindowTitlebar";
 import { ChatComposer } from "./ChatComposer";
 import { ChatMessageList } from "./ChatMessageList";
 import { ChatProfileBar } from "./ChatProfileBar";
-import { createUserMessage, mergeMessages } from "./messageUtils";
+import { appendMessages, createUserMessage, mergeMessages } from "./messageUtils";
 
 export function ChatScreen() {
   const router = useRouter();
@@ -26,6 +26,7 @@ export function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
+  // 메시지가 추가된 다음 DOM 높이가 반영된 시점에 마지막 메시지로 이동합니다.
   const scrollToBottom = () => requestAnimationFrame(() => {
     if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
   });
@@ -49,6 +50,7 @@ export function ChatScreen() {
   }, []);
 
   useEffect(() => {
+    // 보호 화면 진입 시 Access Token을 복구하고 인증된 경우에만 기록을 조회합니다.
     let active = true;
     authApi.restore().then((authenticated) => {
       if (!active) return;
@@ -72,6 +74,7 @@ export function ChatScreen() {
       setNextCursor(page.nextCursor);
       setHasMore(page.hasMore);
       requestAnimationFrame(() => {
+        // 이전 기록이 위에 추가되어도 사용자가 보던 스크롤 위치를 유지합니다.
         if (list) list.scrollTop = list.scrollHeight - previousHeight + previousTop;
       });
     } catch {
@@ -83,14 +86,19 @@ export function ChatScreen() {
 
   async function sendExisting(message: ChatMessage) {
     if (sending) return;
+    // AI 오류 메시지를 재시도할 때는 저장해 둔 원래 사용자 질문을 전송합니다.
+    const content = message.retryContent ?? message.content;
+    const replacingAssistantError = message.role === "assistant" && Boolean(message.retryContent);
     setSending(true);
     setMessages((current) => current.map((item) => (
       item.id === message.id ? { ...item, status: "sending" } : item
     )));
     try {
-      const reply = await chatApi.send(message.content);
-      setMessages((current) => mergeMessages(
-        current.map((item) => item.id === message.id ? { ...item, status: "success" } : item),
+      const reply = await chatApi.send(content);
+      setMessages((current) => appendMessages(
+        current
+          .filter((item) => !(replacingAssistantError && item.id === message.id))
+          .map((item) => item.id === message.id ? { ...item, status: "success" } : item),
         [reply],
       ));
       scrollToBottom();
@@ -108,7 +116,8 @@ export function ChatScreen() {
     if (!content || sending) return;
     const userMessage = createUserMessage(content);
     setDraft("");
-    setMessages((current) => mergeMessages(current, [userMessage]));
+    // 낙관적 업데이트로 질문을 먼저 보여주고 API 응답을 다음 메시지로 추가합니다.
+    setMessages((current) => appendMessages(current, [userMessage]));
     scrollToBottom();
     await sendExisting(userMessage);
   }

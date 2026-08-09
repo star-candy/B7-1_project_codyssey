@@ -7,6 +7,7 @@ export type ChatMessage = {
   content: string;
   status: MessageStatus;
   createdAt: string;
+  retryContent?: string;
 };
 
 export type HistoryPage = {
@@ -15,8 +16,17 @@ export type HistoryPage = {
   hasMore: boolean;
 };
 
+type ChatRecordResponse = {
+  id: number;
+  user_message: string;
+  ai_response: string | null;
+  error_status: "AI_TIMEOUT" | "AI_ERROR" | null;
+  created_at: string;
+};
+
 type AuthResult = {
-  accessToken?: string;
+  access_token: string;
+  token_type: "bearer";
 };
 
 export class ApiError extends Error {
@@ -30,6 +40,7 @@ export class ApiError extends Error {
   }
 }
 
+// API 주소가 비어 있으면 백엔드 없이 화면을 확인할 수 있는 데모 모드로 동작합니다.
 const rawApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
 const apiBaseUrl = rawApiBaseUrl?.replace(/\/$/, "") ?? "";
 const isMockMode = !apiBaseUrl;
@@ -39,10 +50,13 @@ const endpoints = {
   signup: "/auth/signup",
   logout: "/auth/logout",
   refresh: "/auth/refresh",
-  messages: "/chat/messages",
+  chat: "/chat",
+  history: "/me/chats",
 } as const;
 
+// Access Token은 브라우저 저장소에 남기지 않고 현재 탭의 메모리에만 보관합니다.
 let accessToken: string | null = null;
+// 동시에 여러 요청이 401을 받아도 토큰 갱신 요청은 한 번만 실행합니다.
 let refreshPromise: Promise<boolean> | null = null;
 
 const delay = (milliseconds: number) =>
@@ -53,13 +67,9 @@ const createId = (prefix: string) =>
 
 function tokenFrom(payload: unknown): string | undefined {
   if (!payload || typeof payload !== "object") return undefined;
-  const value = payload as Record<string, unknown>;
-  const data =
-    value.data && typeof value.data === "object"
-      ? (value.data as Record<string, unknown>)
-      : undefined;
-  const token = value.accessToken ?? value.token ?? data?.accessToken ?? data?.token;
-  return typeof token === "string" ? token : undefined;
+  // 확정된 FastAPI 인증 응답의 access_token만 사용합니다.
+  const { access_token } = payload as Partial<AuthResult>;
+  return typeof access_token === "string" ? access_token : undefined;
 }
 
 async function readJson(response: Response): Promise<unknown> {
@@ -79,7 +89,17 @@ function errorMessage(payload: unknown, fallback: string) {
     value.data && typeof value.data === "object"
       ? (value.data as Record<string, unknown>)
       : undefined;
-  const message = value.message ?? value.error ?? data?.message;
+  // FastAPI는 일반 오류와 입력 검증 오류를 detail 필드로 반환합니다.
+  const detail = value.detail;
+  const validationMessage = Array.isArray(detail)
+    ? (detail[0] as Record<string, unknown> | undefined)?.msg
+    : undefined;
+  const message =
+    value.message ??
+    value.error ??
+    (typeof detail === "string" ? detail : undefined) ??
+    validationMessage ??
+    data?.message;
   return typeof message === "string" && message.trim() ? message : fallback;
 }
 
@@ -90,6 +110,7 @@ async function performTokenRefresh() {
     return active;
   }
 
+  // HttpOnly Refresh Token은 JavaScript로 읽지 않고 쿠키로만 전송합니다.
   const response = await fetch(`${apiBaseUrl}${endpoints.refresh}`, {
     method: "POST",
     credentials: "include",
@@ -129,6 +150,7 @@ async function request<T>(
     credentials: "include",
   });
 
+  // Access Token 만료 시 갱신한 뒤 실패한 요청을 한 번만 다시 보냅니다.
   if (response.status === 401 && retryAfterRefresh) {
     const refreshed = await refreshAccessToken();
     if (refreshed) return request<T>(path, init, false);
@@ -145,6 +167,7 @@ async function request<T>(
   return payload as T;
 }
 
+// API 서버 없이 페이지네이션과 채팅 UI를 확인하기 위한 데모 데이터입니다.
 const mockMessages: ChatMessage[] = [
   ["assistant", "안녕하세요! 저는 Lucky예요. 오늘은 무엇을 도와드릴까요?"],
   ["user", "오늘 해야 할 일을 정리하고 싶어."],
@@ -175,21 +198,33 @@ const mockMessages: ChatMessage[] = [
   createdAt: new Date(Date.now() - (21 - index) * 180_000).toISOString(),
 }));
 
-function normalizeMessage(value: unknown, index = 0): ChatMessage | null {
-  if (!value || typeof value !== "object") return null;
-  const item = value as Record<string, unknown>;
-  const roleValue = item.role ?? item.sender ?? item.type;
-  const role: MessageRole =
-    roleValue === "assistant" || roleValue === "ai" ? "assistant" : "user";
-  const contentValue = item.content ?? item.message ?? item.text;
-  if (typeof contentValue !== "string") return null;
+function toAssistantMessage(chat: ChatRecordResponse): ChatMessage {
+  // 질문은 화면에 먼저 추가되므로 POST 응답에서는 AI 메시지만 변환합니다.
   return {
-    id: String(item.id ?? item.messageId ?? `message-${index}-${Date.now()}`),
-    role,
-    content: contentValue,
-    status: "success",
-    createdAt: String(item.createdAt ?? item.timestamp ?? new Date().toISOString()),
+    id: `chat-${chat.id}-assistant`,
+    role: "assistant",
+    content: chat.ai_response ?? "답변을 불러오지 못했어요.",
+    status: chat.error_status ? "error" : "success",
+    createdAt: chat.created_at,
+    // AI 오류 메시지 대신 사용자가 보낸 원래 질문으로 재시도합니다.
+    retryContent: chat.error_status ? chat.user_message : undefined,
   };
+}
+
+function toChatMessages(chat: ChatRecordResponse): ChatMessage[] {
+  // 백엔드의 채팅 한 건을 화면에서 사용하는 사용자·AI 메시지로 분리합니다.
+  const messages: ChatMessage[] = [
+    {
+      id: `chat-${chat.id}-user`,
+      role: "user",
+      content: chat.user_message,
+      status: "success",
+      createdAt: chat.created_at,
+    },
+  ];
+
+  if (chat.ai_response) messages.push(toAssistantMessage(chat));
+  return messages;
 }
 
 export const authApi = {
@@ -236,6 +271,7 @@ export const authApi = {
     );
     accessToken = tokenFrom(payload) ?? null;
     if (!accessToken) {
+      // 회원가입 응답에는 토큰이 없으므로 가입 성공 후 로그인합니다.
       await authApi.login(username, password);
     }
   },
@@ -269,31 +305,12 @@ export const chatApi = {
       };
     }
 
-    const query = new URLSearchParams({ limit: String(limit) });
-    if (cursor) query.set("cursor", cursor);
-    const payload = await request<unknown>(`${endpoints.messages}?${query.toString()}`);
-    const value = payload as Record<string, unknown>;
-    const data =
-      value?.data && typeof value.data === "object"
-        ? (value.data as Record<string, unknown>)
-        : value;
-    const rawMessages = Array.isArray(payload)
-      ? payload
-      : Array.isArray(data?.messages)
-        ? data.messages
-        : Array.isArray(data?.items)
-          ? data.items
-          : [];
-    const messages = rawMessages
-      .map((item, index) => normalizeMessage(item, index))
-      .filter((item): item is ChatMessage => Boolean(item))
-      .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
-    const next = data?.nextCursor ?? data?.cursor ?? null;
-    const hasMore = data?.hasMore ?? data?.hasNext ?? Boolean(next);
+    // 현재 백엔드는 페이지네이션 없이 전체 대화 기록을 반환합니다.
+    const chats = await request<ChatRecordResponse[]>(endpoints.history);
     return {
-      messages,
-      nextCursor: typeof next === "string" ? next : null,
-      hasMore: Boolean(hasMore),
+      messages: chats.flatMap(toChatMessages),
+      nextCursor: null,
+      hasMore: false,
     };
   },
 
@@ -312,28 +329,11 @@ export const chatApi = {
       };
     }
 
-    const payload = await request<unknown>(endpoints.messages, {
+    const payload = await request<ChatRecordResponse>(endpoints.chat, {
       method: "POST",
       body: JSON.stringify({ message: content }),
     });
-    const value = payload as Record<string, unknown>;
-    const data =
-      value?.data && typeof value.data === "object"
-        ? (value.data as Record<string, unknown>)
-        : value;
-    const raw = data?.message ?? data?.reply ?? data;
-    const normalized = normalizeMessage(raw);
-    if (normalized) return { ...normalized, role: "assistant" };
-    if (typeof raw === "string") {
-      return {
-        id: createId("assistant"),
-        role: "assistant",
-        content: raw,
-        status: "success",
-        createdAt: new Date().toISOString(),
-      };
-    }
-    throw new Error("답변 형식을 확인하지 못했어요.");
+    return toAssistantMessage(payload);
   },
 };
 
