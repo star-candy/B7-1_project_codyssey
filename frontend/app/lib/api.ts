@@ -49,8 +49,8 @@ const endpoints = {
   signup: "/auth/signup",
   logout: "/auth/logout",
   refresh: "/auth/refresh",
-  messages: "/chat/messages",
   chat: "/chat",
+  history: "/me/chats",
 } as const;
 
 let accessToken: string | null = null;
@@ -203,23 +203,6 @@ const mockMessages: ChatMessage[] = [
   createdAt: new Date(Date.now() - (21 - index) * 180_000).toISOString(),
 }));
 
-function normalizeMessage(value: unknown, index = 0): ChatMessage | null {
-  if (!value || typeof value !== "object") return null;
-  const item = value as Record<string, unknown>;
-  const roleValue = item.role ?? item.sender ?? item.type;
-  const role: MessageRole =
-    roleValue === "assistant" || roleValue === "ai" ? "assistant" : "user";
-  const contentValue = item.content ?? item.message ?? item.text;
-  if (typeof contentValue !== "string") return null;
-  return {
-    id: String(item.id ?? item.messageId ?? `message-${index}-${Date.now()}`),
-    role,
-    content: contentValue,
-    status: "success",
-    createdAt: String(item.createdAt ?? item.timestamp ?? new Date().toISOString()),
-  };
-}
-
 function toAssistantMessage(chat: ChatRecordResponse): ChatMessage {
   // 질문은 화면에 먼저 추가되므로 POST 응답에서는 AI 메시지만 변환합니다.
   return {
@@ -229,6 +212,22 @@ function toAssistantMessage(chat: ChatRecordResponse): ChatMessage {
     status: chat.error_status ? "error" : "success",
     createdAt: chat.created_at,
   };
+}
+
+function toChatMessages(chat: ChatRecordResponse): ChatMessage[] {
+  // 백엔드의 채팅 한 건을 화면에서 사용하는 사용자·AI 메시지로 분리합니다.
+  const messages: ChatMessage[] = [
+    {
+      id: `chat-${chat.id}-user`,
+      role: "user",
+      content: chat.user_message,
+      status: "success",
+      createdAt: chat.created_at,
+    },
+  ];
+
+  if (chat.ai_response) messages.push(toAssistantMessage(chat));
+  return messages;
 }
 
 export const authApi = {
@@ -308,31 +307,12 @@ export const chatApi = {
       };
     }
 
-    const query = new URLSearchParams({ limit: String(limit) });
-    if (cursor) query.set("cursor", cursor);
-    const payload = await request<unknown>(`${endpoints.messages}?${query.toString()}`);
-    const value = payload as Record<string, unknown>;
-    const data =
-      value?.data && typeof value.data === "object"
-        ? (value.data as Record<string, unknown>)
-        : value;
-    const rawMessages = Array.isArray(payload)
-      ? payload
-      : Array.isArray(data?.messages)
-        ? data.messages
-        : Array.isArray(data?.items)
-          ? data.items
-          : [];
-    const messages = rawMessages
-      .map((item, index) => normalizeMessage(item, index))
-      .filter((item): item is ChatMessage => Boolean(item))
-      .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
-    const next = data?.nextCursor ?? data?.cursor ?? null;
-    const hasMore = data?.hasMore ?? data?.hasNext ?? Boolean(next);
+    // 현재 백엔드는 페이지네이션 없이 전체 대화 기록을 반환합니다.
+    const chats = await request<ChatRecordResponse[]>(endpoints.history);
     return {
-      messages,
-      nextCursor: typeof next === "string" ? next : null,
-      hasMore: Boolean(hasMore),
+      messages: chats.flatMap(toChatMessages),
+      nextCursor: null,
+      hasMore: false,
     };
   },
 
