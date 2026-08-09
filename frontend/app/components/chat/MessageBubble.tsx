@@ -13,6 +13,8 @@ type MessageBubbleProps = {
 
 export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
   const isUser = message.role === "user";
+  // 메시지 재시도 정책이 확정될 때까지 버튼을 임시로 숨깁니다.
+  const showRetryButton = false;
 
   return (
     <article className={`message-row ${isUser ? "user-message" : "assistant-message"}`}>
@@ -47,7 +49,7 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
           <div className="message-error" role="alert">
             <Sprite x={878} y={695} width={26} height={25} className="warning-sprite" />
             <p>답변을 불러오지 못했어요. 다시 시도해 주세요.</p>
-            <button type="button" onClick={onRetry}>다시 시도</button>
+            {showRetryButton && <button type="button" onClick={onRetry}>다시 시도</button>}
           </div>
         )}
       </div>
