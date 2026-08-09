@@ -19,12 +19,31 @@ type AuthResult = {
   accessToken?: string;
 };
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly payload: unknown,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 const rawApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
 const apiBaseUrl = rawApiBaseUrl?.replace(/\/$/, "") ?? "";
 const isMockMode = !apiBaseUrl;
 const mockSessionKey = "lucky-bunny-demo-session";
+const endpoints = {
+  login: "/auth/login",
+  signup: "/auth/signup",
+  logout: "/auth/logout",
+  refresh: "/auth/refresh",
+  messages: "/chat/messages",
+} as const;
 
 let accessToken: string | null = null;
+let refreshPromise: Promise<boolean> | null = null;
 
 const delay = (milliseconds: number) =>
   new Promise((resolve) => window.setTimeout(resolve, milliseconds));
@@ -64,14 +83,14 @@ function errorMessage(payload: unknown, fallback: string) {
   return typeof message === "string" && message.trim() ? message : fallback;
 }
 
-async function refreshAccessToken() {
+async function performTokenRefresh() {
   if (isMockMode) {
     const active = sessionStorage.getItem(mockSessionKey) === "active";
     accessToken = active ? "mock-access-token" : null;
     return active;
   }
 
-  const response = await fetch(`${apiBaseUrl}/auth/refresh`, {
+  const response = await fetch(`${apiBaseUrl}${endpoints.refresh}`, {
     method: "POST",
     credentials: "include",
     headers: { Accept: "application/json" },
@@ -83,6 +102,15 @@ async function refreshAccessToken() {
   const payload = await readJson(response);
   accessToken = tokenFrom(payload) ?? null;
   return Boolean(accessToken);
+}
+
+async function refreshAccessToken() {
+  if (!refreshPromise) {
+    refreshPromise = performTokenRefresh().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
 }
 
 async function request<T>(
@@ -108,7 +136,11 @@ async function request<T>(
 
   const payload = await readJson(response);
   if (!response.ok) {
-    throw new Error(errorMessage(payload, "요청을 처리하지 못했어요."));
+    throw new ApiError(
+      errorMessage(payload, "요청을 처리하지 못했어요."),
+      response.status,
+      payload,
+    );
   }
   return payload as T;
 }
@@ -182,7 +214,7 @@ export const authApi = {
       return;
     }
     const payload = await request<AuthResult>(
-      "/auth/login",
+      endpoints.login,
       { method: "POST", body: JSON.stringify({ username, password }) },
       false,
     );
@@ -198,7 +230,7 @@ export const authApi = {
       return;
     }
     const payload = await request<AuthResult>(
-      "/auth/signup",
+      endpoints.signup,
       { method: "POST", body: JSON.stringify({ username, password }) },
       false,
     );
@@ -216,7 +248,7 @@ export const authApi = {
       return;
     }
     try {
-      await request("/auth/logout", { method: "POST" }, false);
+      await request(endpoints.logout, { method: "POST" }, false);
     } finally {
       accessToken = null;
     }
@@ -239,7 +271,7 @@ export const chatApi = {
 
     const query = new URLSearchParams({ limit: String(limit) });
     if (cursor) query.set("cursor", cursor);
-    const payload = await request<unknown>(`/chat/messages?${query.toString()}`);
+    const payload = await request<unknown>(`${endpoints.messages}?${query.toString()}`);
     const value = payload as Record<string, unknown>;
     const data =
       value?.data && typeof value.data === "object"
@@ -280,7 +312,7 @@ export const chatApi = {
       };
     }
 
-    const payload = await request<unknown>("/chat/messages", {
+    const payload = await request<unknown>(endpoints.messages, {
       method: "POST",
       body: JSON.stringify({ message: content }),
     });
@@ -306,4 +338,3 @@ export const chatApi = {
 };
 
 export const apiMode = isMockMode ? "demo" : "live";
-
