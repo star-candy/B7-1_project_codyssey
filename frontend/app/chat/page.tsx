@@ -1,4 +1,4 @@
-import { ChatScreen } from "../components/LuckyBunny";
+import { ChatScreen } from "../components/chat/ChatScreen";
 
 export default function ChatPage() {
   return <ChatScreen />;

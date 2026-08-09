@@ -1,4 +1,4 @@
-import { AuthScreen } from "../components/LuckyBunny";
+import { AuthScreen } from "../components/auth/AuthScreen";
 
 export default function LoginPage() {
   return <AuthScreen mode="login" />;
