@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, status
 from fastapi.security import OAuth2PasswordRequestForm
-from auth import schemas, service, validators
+from auth import service, validators
 from auth.dependencies import get_db
+from core import schemas
 
 # 라우터 초기 설정
 router = APIRouter(prefix="/api/auth", tags=["auth"])
