@@ -39,54 +39,19 @@ NEXT_PUBLIC_SITE_URL=https://example.com
 
 API 주소는 브라우저에 공개되는 값이므로 비밀키를 넣으면 안 됩니다.
 
-## 예상 API 연결 지점
+## API 명세
 
-백엔드 명세가 확정되면 `app/lib/api.ts`의 경로와 요청·응답 변환만 맞추면 됩니다.
+모든 서비스 API는 `/api` 접두사를 유지합니다. 현재 백엔드 구현과 프론트 요구사항을 반영한 전체 계약은 [API_SPEC.md](./API_SPEC.md)에 정리되어 있습니다.
 
-### 인증
+주요 경로:
 
-| 기능 | 메서드 | 현재 예상 경로 | 요청 |
-| --- | --- | --- | --- |
-| 로그인 | `POST` | `/auth/login` | `{ "username": string, "password": string }` |
-| 회원가입 | `POST` | `/auth/signup` | `{ "username": string, "password": string }` |
-| 토큰 갱신 | `POST` | `/auth/refresh` | refresh cookie |
-| 로그아웃 | `POST` | `/auth/logout` | 없음 |
-
-로그인과 회원가입 응답의 access token은 다음 형태를 모두 읽을 수 있습니다.
-
-```json
-{ "accessToken": "..." }
-```
-
-```json
-{ "data": { "accessToken": "..." } }
-```
-
-### 채팅
-
-| 기능 | 메서드 | 현재 예상 경로 |
-| --- | --- | --- |
-| 메시지 기록 | `GET` | `/chat/messages?limit=8&cursor=...` |
-| 메시지 전송 | `POST` | `/chat/messages` |
-
-메시지 기록의 권장 응답 형태입니다.
-
-```json
-{
-  "messages": [
-    {
-      "id": "message-id",
-      "role": "assistant",
-      "content": "안녕하세요!",
-      "createdAt": "2026-08-09T00:00:00.000Z"
-    }
-  ],
-  "nextCursor": "older-page-cursor",
-  "hasMore": true
-}
-```
-
-메시지 전송 요청은 `{ "message": string }`이며 응답은 `message`, `reply` 또는 메시지 객체 형태를 처리할 수 있습니다. 실제 명세가 확정되면 이 호환 처리 대신 팀 명세의 타입 하나로 좁히는 것을 권장합니다.
+- `POST /api/auth/register`: 회원가입
+- `POST /api/auth/login`: 로그인
+- `GET /api/auth/validation-rules`: 회원가입 검증 규칙
+- `POST /api/auth/refresh`: 토큰 갱신, 백엔드 추가 필요
+- `POST /api/auth/logout`: 로그아웃, 백엔드 추가 필요
+- `POST /api/chat`: AI 메시지 전송
+- `GET /api/me/chats`: 과거 기록, cursor 페이지네이션 추가 필요
 
 ## JWT와 공개 서비스 보안
 
