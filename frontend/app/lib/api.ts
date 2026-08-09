@@ -7,6 +7,7 @@ export type ChatMessage = {
   content: string;
   status: MessageStatus;
   createdAt: string;
+  retryContent?: string;
 };
 
 export type HistoryPage = {
@@ -211,6 +212,8 @@ function toAssistantMessage(chat: ChatRecordResponse): ChatMessage {
     content: chat.ai_response ?? "답변을 불러오지 못했어요.",
     status: chat.error_status ? "error" : "success",
     createdAt: chat.created_at,
+    // AI 오류 메시지 대신 사용자가 보낸 원래 질문으로 재시도합니다.
+    retryContent: chat.error_status ? chat.user_message : undefined,
   };
 }
 

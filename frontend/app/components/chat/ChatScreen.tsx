@@ -83,14 +83,19 @@ export function ChatScreen() {
 
   async function sendExisting(message: ChatMessage) {
     if (sending) return;
+    // AI 오류 메시지를 재시도할 때는 저장해 둔 원래 사용자 질문을 전송합니다.
+    const content = message.retryContent ?? message.content;
+    const replacingAssistantError = message.role === "assistant" && Boolean(message.retryContent);
     setSending(true);
     setMessages((current) => current.map((item) => (
       item.id === message.id ? { ...item, status: "sending" } : item
     )));
     try {
-      const reply = await chatApi.send(message.content);
+      const reply = await chatApi.send(content);
       setMessages((current) => mergeMessages(
-        current.map((item) => item.id === message.id ? { ...item, status: "success" } : item),
+        current
+          .filter((item) => !(replacingAssistantError && item.id === message.id))
+          .map((item) => item.id === message.id ? { ...item, status: "success" } : item),
         [reply],
       ));
       scrollToBottom();
