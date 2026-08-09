@@ -1,9 +1,9 @@
 "use client";
 
-import { CSSProperties, FormEvent, KeyboardEvent, useEffect, useState } from "react";
+import { CSSProperties, FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { authApi } from "../lib/api";
+import { authApi, chatApi, ChatMessage } from "../lib/api";
 
 type AuthMode = "login" | "signup";
 
@@ -221,68 +221,115 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
   );
 }
 
-type ChatMessage = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  createdAt: string;
-};
-
 function formatTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("ko-KR", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
+  return new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
+}
+
+function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]) {
+  const byId = new Map<string, ChatMessage>();
+  [...current, ...incoming].forEach((message) => byId.set(message.id, message));
+  return [...byId.values()].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+}
+
+function createUserMessage(content: string): ChatMessage {
+  const createdAt = new Date();
+  return { id: `user-${createdAt.getTime()}`, role: "user", content, status: "sending", createdAt: createdAt.toISOString() };
 }
 
 export function ChatScreen() {
   const router = useRouter();
+  const listRef = useRef<HTMLDivElement>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      content: "안녕하세요! 저는 Lucky예요. 오늘은 무엇을 도와드릴까요?",
-      createdAt: new Date().toISOString(),
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+
+  const scrollToBottom = () => requestAnimationFrame(() => {
+    if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+  });
+
+  const loadInitialHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    setHistoryError("");
+    try {
+      const page = await chatApi.history(null);
+      setMessages(page.messages);
+      setNextCursor(page.nextCursor);
+      setHasMore(page.hasMore);
+      requestAnimationFrame(() => {
+        if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+      });
+    } catch (caught) {
+      setHistoryError(caught instanceof Error ? caught.message : "대화 기록을 불러오지 못했어요. 다시 시도해 주세요.");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
     authApi.restore().then((authenticated) => {
       if (!active) return;
-      if (!authenticated) router.replace("/login");
-      else setCheckingAuth(false);
+      if (!authenticated) return router.replace("/login");
+      setCheckingAuth(false);
+      loadInitialHistory();
     });
     return () => { active = false; };
-  }, [router]);
+  }, [loadInitialHistory, router]);
+
+  const loadOlder = useCallback(async () => {
+    if (!nextCursor || !hasMore || historyLoadingMore) return;
+    const list = listRef.current;
+    const previousHeight = list?.scrollHeight ?? 0;
+    const previousTop = list?.scrollTop ?? 0;
+    setHistoryLoadingMore(true);
+    setHistoryError("");
+    try {
+      const page = await chatApi.history(nextCursor);
+      setMessages((current) => mergeMessages(current, page.messages));
+      setNextCursor(page.nextCursor);
+      setHasMore(page.hasMore);
+      requestAnimationFrame(() => {
+        if (list) list.scrollTop = list.scrollHeight - previousHeight + previousTop;
+      });
+    } catch {
+      setHistoryError("이전 대화를 불러오지 못했어요.");
+    } finally {
+      setHistoryLoadingMore(false);
+    }
+  }, [hasMore, historyLoadingMore, nextCursor]);
+
+  async function sendExisting(message: ChatMessage) {
+    if (sending) return;
+    setSending(true);
+    setMessages((current) => current.map((item) => item.id === message.id ? { ...item, status: "sending" } : item));
+    try {
+      const reply = await chatApi.send(message.content);
+      setMessages((current) => mergeMessages(current.map((item) => item.id === message.id ? { ...item, status: "success" } : item), [reply]));
+      scrollToBottom();
+    } catch {
+      setMessages((current) => current.map((item) => item.id === message.id ? { ...item, status: "error" } : item));
+    } finally {
+      setSending(false);
+    }
+  }
 
   async function handleSend() {
     const content = draft.trim();
     if (!content || sending) return;
-    const createdAt = new Date();
+    const userMessage = createUserMessage(content);
     setDraft("");
-    setSending(true);
-    setMessages((current) => [...current, {
-      id: `user-${createdAt.getTime()}`,
-      role: "user",
-      content,
-      createdAt: createdAt.toISOString(),
-    }]);
-    await new Promise((resolve) => window.setTimeout(resolve, 650));
-    setMessages((current) => [...current, {
-      id: `assistant-${Date.now()}`,
-      role: "assistant",
-      content: "좋아요! 실제 AI 답변은 백엔드 API 명세가 준비되면 이 위치에 연결돼요. 🍀",
-      createdAt: new Date().toISOString(),
-    }]);
-    setSending(false);
+    setMessages((current) => mergeMessages(current, [userMessage]));
+    scrollToBottom();
+    await sendExisting(userMessage);
   }
 
   function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -295,11 +342,8 @@ export function ChatScreen() {
   async function handleLogout() {
     if (loggingOut) return;
     setLoggingOut(true);
-    try {
-      await authApi.logout();
-    } finally {
-      router.replace("/login");
-    }
+    try { await authApi.logout(); }
+    finally { setMessages([]); router.replace("/login"); }
   }
 
   if (checkingAuth) return <AppLoading label="Lucky를 만나러 가고 있어요" />;
@@ -319,13 +363,21 @@ export function ChatScreen() {
           </button>
         </div>
 
-        <div className="chat-body" aria-live="polite">
-          {messages.map((message) => <MessageBubble key={message.id} message={message} />)}
+        <div className="chat-body" ref={listRef} onScroll={() => { if ((listRef.current?.scrollTop ?? 100) < 56) loadOlder(); }} aria-live="polite">
+          {historyLoading && <div className="history-state"><BunnyAvatar profile /><p>지난 대화를 불러오고 있어요...</p></div>}
+          {!historyLoading && hasMore && !historyLoadingMore && <button className="load-older" type="button" onClick={loadOlder}>이전 대화 더 보기</button>}
+          {historyLoadingMore && <div className="history-more"><div className="typing-dots"><i /><i /><i /></div></div>}
+          {historyError && <div className="history-error" role="alert"><p>{historyError}</p><button type="button" onClick={messages.length ? loadOlder : loadInitialHistory}>다시 시도</button></div>}
+
+          {!historyLoading && !historyError && messages.length === 0 && (
+            <MessageBubble message={{ id: "welcome", role: "assistant", content: "안녕하세요! 저는 Lucky예요. 무엇을 도와드릴까요?", status: "success", createdAt: new Date().toISOString() }} onRetry={() => {}} />
+          )}
+          {messages.map((message) => <MessageBubble key={message.id} message={message} onRetry={() => sendExisting(message)} />)}
           {sending && <div className="typing-row"><BunnyAvatar /><div className="typing-bubble"><div className="typing-dots"><i /><i /><i /></div></div></div>}
         </div>
 
         <div className="composer-wrap">
-          <PixelAsset src="/assets/final-sprites/decor-clover.png" width={74} height={76} className="composer-clover" />
+            <PixelAsset src="/assets/final-sprites/decor-clover.png" width={74} height={76} className="composer-clover" />
           <label className="sr-only" htmlFor="chat-message">메시지</label>
           <textarea id="chat-message" rows={1} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder="메시지를 입력해 주세요" disabled={sending} />
           <button className="send-button sprite-button" type="button" onClick={handleSend} disabled={!draft.trim() || sending} aria-label="전송">
@@ -338,16 +390,23 @@ export function ChatScreen() {
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({ message, onRetry }: { message: ChatMessage; onRetry: () => void }) {
   const isUser = message.role === "user";
   return (
     <article className={`message-row ${isUser ? "user-message" : "assistant-message"}`}>
       <div className="message-avatar">{isUser ? <CarrotAvatar /> : <BunnyAvatar />}</div>
       <div className="message-column">
         <div className="message-meta"><strong>{isUser ? "" : "LUCKY BUNNY"}</strong><time dateTime={message.createdAt}>{formatTime(message.createdAt)}</time></div>
-        <div className="message-bubble">
+        <div className={`message-bubble ${message.status === "sending" ? "pending" : ""}`}>
           {message.content.split("\n").map((line, index) => <span key={`${message.id}-${index}`}>{line}</span>)}
         </div>
+        {message.status === "error" && (
+          <div className="message-error" role="alert">
+            <Sprite x={878} y={695} width={26} height={25} className="warning-sprite" />
+            <p>답변을 불러오지 못했어요. 다시 시도해 주세요.</p>
+            <button type="button" onClick={onRetry}>다시 시도</button>
+          </div>
+        )}
       </div>
     </article>
   );
