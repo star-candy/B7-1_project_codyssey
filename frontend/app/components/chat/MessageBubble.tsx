@@ -1,3 +1,5 @@
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { ChatMessage } from "../../lib/api";
 import { BunnyAvatar } from "../common/BunnyAvatar";
 import { Sprite } from "../common/Sprite";
@@ -23,9 +25,23 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
           <time dateTime={message.createdAt}>{formatTime(message.createdAt)}</time>
         </div>
         <div className={`message-bubble ${message.status === "sending" ? "pending" : ""}`}>
-          {message.content.split("\n").map((line, index) => (
-            <span key={`${message.id}-${index}`}>{line}</span>
-          ))}
+          {isUser ? (
+            message.content.split("\n").map((line, index) => (
+              <span className="plain-message-line" key={`${message.id}-${index}`}>{line}</span>
+            ))
+          ) : (
+            // AI 답변만 Markdown으로 렌더링하고 사용자 입력은 일반 텍스트로 표시합니다.
+            <div className="markdown-content">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+                }}
+              >
+                {message.content}
+              </ReactMarkdown>
+            </div>
+          )}
         </div>
         {message.status === "error" && (
           <div className="message-error" role="alert">
