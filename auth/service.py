@@ -35,5 +35,37 @@ def authenticate_user(username: str, password: str, db) -> schemas.Token:
 
     # 검증 성공 시 JWT 토큰 생성
     access_token = security.create_access_token(data={"sub": username})
-    
-    return schemas.Token(access_token=access_token, token_type="bearer")
+    refresh_token = security.create_refresh_token(data={"sub": username})
+
+    # 2. 둘 다 담아서 반환
+    return schemas.Token(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer"
+    )
+
+def reissue_tokens(refresh_token: str, db) -> schemas.Token:
+    """
+    토큰 재발급 비즈니스 로직:
+    Refresh Token을 검증하고 새로운 Access Token (및 Refresh Token)을 반환합니다.
+    """
+    # 1. Refresh Token 검증 및 username 추출
+    username = security.verify_refresh_token(refresh_token)
+
+    # 2. 유저 존재 여부 확인
+    user = db.query(models.User).filter(models.User.username == username).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+
+    # 3. 새로운 토큰 발급 (Token Rotation: 보안을 위해 Refresh Token도 함께 새것으로 교체 권장)
+    new_access_token = security.create_access_token(data={"sub": username})
+    new_refresh_token = security.create_refresh_token(data={"sub": username})
+
+    return schemas.Token(
+        access_token=new_access_token,
+        refresh_token=new_refresh_token,
+        token_type="bearer"
+    )

@@ -14,11 +14,15 @@ class UserCreate(BaseModel):
     @classmethod
     def check_username(cls, v: str) -> str:
         return validators.validate_username(v)
-
     @field_validator("password")
     @classmethod
     def check_password(cls, v: str) -> str:
         return validators.validate_password(v)
+
+class UserLogin(BaseModel):
+    """로그인 시 요청받을 데이터"""
+    username: str
+    password: str
 
 class UserResponse(BaseModel):
     """응답으로 내려줄 데이터 (비밀번호 제외)"""
@@ -30,9 +34,9 @@ class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True) # Pydantic v2 표준 방식
 
 class Token(BaseModel):
-    """로그인 성공 시 프론트엔드에 전달할 JWT 토큰 스키마"""
     access_token: str
-    token_type: str
+    refresh_token: str  # 추가
+    token_type: str = "bearer"
 
 # 토큰 디코딩 후 payload 검증용 (선택이지만 흔히 씀)
 class TokenData(BaseModel):
