@@ -16,7 +16,9 @@ export type HistoryPage = {
 };
 
 type AuthResult = {
+  access_token?: string;
   accessToken?: string;
+  token_type?: string;
 };
 
 export class ApiError extends Error {
@@ -58,7 +60,14 @@ function tokenFrom(payload: unknown): string | undefined {
     value.data && typeof value.data === "object"
       ? (value.data as Record<string, unknown>)
       : undefined;
-  const token = value.accessToken ?? value.token ?? data?.accessToken ?? data?.token;
+  // FastAPI의 snake_case 응답과 기존 camelCase 응답을 모두 지원합니다.
+  const token =
+    value.access_token ??
+    value.accessToken ??
+    value.token ??
+    data?.access_token ??
+    data?.accessToken ??
+    data?.token;
   return typeof token === "string" ? token : undefined;
 }
 
@@ -79,7 +88,17 @@ function errorMessage(payload: unknown, fallback: string) {
     value.data && typeof value.data === "object"
       ? (value.data as Record<string, unknown>)
       : undefined;
-  const message = value.message ?? value.error ?? data?.message;
+  // FastAPI는 일반 오류와 입력 검증 오류를 detail 필드로 반환합니다.
+  const detail = value.detail;
+  const validationMessage = Array.isArray(detail)
+    ? (detail[0] as Record<string, unknown> | undefined)?.msg
+    : undefined;
+  const message =
+    value.message ??
+    value.error ??
+    (typeof detail === "string" ? detail : undefined) ??
+    validationMessage ??
+    data?.message;
   return typeof message === "string" && message.trim() ? message : fallback;
 }
 
