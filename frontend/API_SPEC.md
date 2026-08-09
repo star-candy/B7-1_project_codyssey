@@ -25,11 +25,10 @@ FastAPI 기본 오류 응답을 사용합니다.
 
 | 기능 | 메서드 | 경로 | 인증 | 상태 |
 | --- | --- | --- | --- | --- |
-| 회원가입 | `POST` | `/api/auth/register` | 없음 | 구현됨 |
+| 회원가입 | `POST` | `/api/auth/signup` | 없음 | 구현됨 |
 | 로그인 | `POST` | `/api/auth/login` | 없음 | 구현됨 |
-| 검증 규칙 | `GET` | `/api/auth/validation-rules` | 없음 | 구현됨 |
-| 토큰 갱신 | `POST` | `/api/auth/refresh` | refresh cookie | 추가 필요 |
-| 로그아웃 | `POST` | `/api/auth/logout` | refresh cookie | 추가 필요 |
+| 토큰 갱신 | `POST` | `/api/auth/refresh` | refresh cookie | 구현됨 |
+| 로그아웃 | `POST` | `/api/auth/logout` | refresh cookie | 구현됨 |
 | AI 메시지 전송 | `POST` | `/api/chat` | Bearer JWT | 구현됨 |
 | 과거 메시지 조회 | `GET` | `/api/me/chats` | Bearer JWT | 구현됨, 페이지네이션 추가 필요 |
 
@@ -37,7 +36,7 @@ FastAPI 기본 오류 응답을 사용합니다.
 
 ### 3.1 회원가입
 
-`POST /api/auth/register`
+`POST /api/auth/signup`
 
 요청:
 
@@ -63,16 +62,19 @@ FastAPI 기본 오류 응답을 사용합니다.
 - `409 Conflict`: 이미 사용 중인 아이디
 - `422 Unprocessable Entity`: 아이디 또는 비밀번호 규칙 위반
 
-회원가입 성공만으로 로그인 처리하지 않습니다. 프론트엔드는 성공 후 로그인 API를 호출하거나 로그인 화면으로 이동합니다.
+회원가입 성공 응답에는 토큰이 없습니다. 현재 프론트엔드는 성공 후 로그인 API를 자동으로 호출합니다.
 
 ### 3.2 로그인
 
 `POST /api/auth/login`
 
-FastAPI `OAuth2PasswordRequestForm`을 사용하므로 JSON이 아니라 `application/x-www-form-urlencoded`로 전송합니다.
+요청:
 
-```text
-username=lucky_user&password=lucky1234
+```json
+{
+  "username": "lucky_user",
+  "password": "lucky1234"
+}
 ```
 
 성공: `200 OK`
@@ -80,41 +82,19 @@ username=lucky_user&password=lucky1234
 ```json
 {
   "access_token": "jwt-access-token",
+  "refresh_token": "jwt-refresh-token",
   "token_type": "bearer"
 }
 ```
 
+백엔드는 `refresh_token`을 응답하는 동시에 HttpOnly cookie에도 설정합니다. 프론트엔드는 응답 본문의 refresh token을 저장하지 않고 access token만 메모리에 보관합니다.
+
 주요 오류:
 
 - `401 Unauthorized`: 아이디 또는 비밀번호 불일치
-- `422 Unprocessable Entity`: 필수 form 항목 누락
+- `422 Unprocessable Entity`: 필수 JSON 항목 누락
 
-### 3.3 회원가입 검증 규칙
-
-`GET /api/auth/validation-rules`
-
-성공: `200 OK`
-
-```json
-{
-  "username": {
-    "min_length": 3,
-    "max_length": 50,
-    "pattern": "^[a-zA-Z0-9_-]+$",
-    "message": "아이디는 영문, 숫자, _, - 만 사용할 수 있습니다."
-  },
-  "password": {
-    "min_length": 8,
-    "max_length": 72
-  }
-}
-```
-
-비밀번호는 영문과 숫자를 모두 포함하고 앞뒤 공백이 없어야 합니다.
-
-### 3.4 토큰 갱신
-
-> 백엔드 추가 구현이 필요한 목표 명세입니다.
+### 3.3 토큰 갱신
 
 `POST /api/auth/refresh`
 
@@ -127,22 +107,27 @@ username=lucky_user&password=lucky1234
 ```json
 {
   "access_token": "new-jwt-access-token",
+  "refresh_token": "new-jwt-refresh-token",
   "token_type": "bearer"
 }
 ```
 
 실패: `401 Unauthorized`
 
-### 3.5 로그아웃
-
-> 백엔드 추가 구현이 필요한 목표 명세입니다.
+### 3.4 로그아웃
 
 `POST /api/auth/logout`
 
 - 요청 본문 없음
-- 백엔드는 refresh token을 폐기하고 cookie를 만료 처리
+- 백엔드는 refresh token cookie를 만료 처리
 
-성공: `204 No Content`
+성공: `200 OK`
+
+```json
+{
+  "message": "Successfully logged out"
+}
+```
 
 ## 4. 채팅 API
 
@@ -198,45 +183,25 @@ AI 호출에 실패해도 현재 백엔드는 저장된 채팅 객체를 `200 OK
 
 ### 4.2 과거 메시지 조회
 
-`GET /api/me/chats?limit=20&cursor=<chat_id>`
+`GET /api/me/chats`
 
-현재 백엔드는 query parameter 없이 전체 기록 배열을 반환합니다. 다음 형태의 cursor 페이지네이션을 목표 명세로 사용합니다.
-
-요청 규칙:
-
-- `limit`: 한 페이지의 채팅 개수, 기본값 `20`
-- `cursor`: 이전 응답의 `next_cursor`; 최초 요청에서는 생략
-- 최초 요청은 최신 기록부터 한 페이지를 조회
-- `items`는 화면 표시를 위해 오래된 기록부터 최신 기록 순으로 반환
-- 다음 요청은 cursor보다 작은 ID의 기록을 조회
+현재 백엔드는 query parameter 없이 로그인한 사용자의 전체 기록을 오래된 순서부터 배열로 반환합니다.
 
 성공: `200 OK`
 
 ```json
-{
-  "items": [
-    {
-      "id": 21,
-      "user_message": "안녕",
-      "ai_response": "안녕하세요!",
-      "error_status": null,
-      "created_at": "2026-08-09T00:00:00Z"
-    }
-  ],
-  "next_cursor": "21",
-  "has_more": true
-}
+[
+  {
+    "id": 21,
+    "user_message": "안녕",
+    "ai_response": "안녕하세요!",
+    "error_status": null,
+    "created_at": "2026-08-09T00:00:00Z"
+  }
+]
 ```
 
-더 불러올 기록이 없을 때:
-
-```json
-{
-  "items": [],
-  "next_cursor": null,
-  "has_more": false
-}
-```
+서버 페이지네이션은 아직 지원하지 않습니다. 프론트는 현재 `nextCursor: null`, `hasMore: false`로 변환합니다.
 
 ## 5. 프론트 메시지 변환 규칙
 
@@ -265,14 +230,15 @@ chat-25-assistant
 - `allow_credentials=True`를 사용할 때 wildcard origin(`*`)을 사용하지 않습니다.
 - 로그인 시도 제한, refresh token 폐기 및 회전 정책은 백엔드에서 처리합니다.
 
-## 7. 프론트 연결 시 변경할 파일
+## 7. 프론트 연결 상태
 
-실제 연결은 `app/lib/api.ts`에서 다음 항목을 수정합니다.
+`app/lib/api.ts`에 다음 연동이 반영되어 있습니다.
 
-- 모든 요청 경로에 `/api` 적용
-- 로그인 요청을 form-urlencoded로 변경
-- `access_token` 응답 읽기
+- JSON 로그인 요청 및 `access_token` 응답 처리
+- HttpOnly refresh cookie를 이용한 access token 갱신
+- `POST /api/chat` AI 메시지 전송
+- `GET /api/me/chats` 전체 대화 기록 조회
 - `ChatResponse`를 사용자·AI 메시지로 변환
-- 과거 기록의 `items`, `next_cursor`, `has_more` 매핑
+- `error_status` 표시 및 원래 사용자 질문 재시도
 
 API 명세가 확정되기 전까지 `NEXT_PUBLIC_API_BASE_URL`을 비워두면 demo 모드가 유지됩니다.
