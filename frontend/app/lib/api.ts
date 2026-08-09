@@ -15,6 +15,14 @@ export type HistoryPage = {
   hasMore: boolean;
 };
 
+type ChatRecordResponse = {
+  id: number;
+  user_message: string;
+  ai_response: string | null;
+  error_status: "AI_TIMEOUT" | "AI_ERROR" | null;
+  created_at: string;
+};
+
 type AuthResult = {
   access_token?: string;
   accessToken?: string;
@@ -42,6 +50,7 @@ const endpoints = {
   logout: "/auth/logout",
   refresh: "/auth/refresh",
   messages: "/chat/messages",
+  chat: "/chat",
 } as const;
 
 let accessToken: string | null = null;
@@ -211,6 +220,17 @@ function normalizeMessage(value: unknown, index = 0): ChatMessage | null {
   };
 }
 
+function toAssistantMessage(chat: ChatRecordResponse): ChatMessage {
+  // 질문은 화면에 먼저 추가되므로 POST 응답에서는 AI 메시지만 변환합니다.
+  return {
+    id: `chat-${chat.id}-assistant`,
+    role: "assistant",
+    content: chat.ai_response ?? "답변을 불러오지 못했어요.",
+    status: chat.error_status ? "error" : "success",
+    createdAt: chat.created_at,
+  };
+}
+
 export const authApi = {
   async restore() {
     try {
@@ -331,28 +351,11 @@ export const chatApi = {
       };
     }
 
-    const payload = await request<unknown>(endpoints.messages, {
+    const payload = await request<ChatRecordResponse>(endpoints.chat, {
       method: "POST",
       body: JSON.stringify({ message: content }),
     });
-    const value = payload as Record<string, unknown>;
-    const data =
-      value?.data && typeof value.data === "object"
-        ? (value.data as Record<string, unknown>)
-        : value;
-    const raw = data?.message ?? data?.reply ?? data;
-    const normalized = normalizeMessage(raw);
-    if (normalized) return { ...normalized, role: "assistant" };
-    if (typeof raw === "string") {
-      return {
-        id: createId("assistant"),
-        role: "assistant",
-        content: raw,
-        status: "success",
-        createdAt: new Date().toISOString(),
-      };
-    }
-    throw new Error("답변 형식을 확인하지 못했어요.");
+    return toAssistantMessage(payload);
   },
 };
 
