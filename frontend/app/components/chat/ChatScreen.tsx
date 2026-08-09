@@ -10,7 +10,7 @@ import { WindowTitlebar } from "../common/WindowTitlebar";
 import { ChatComposer } from "./ChatComposer";
 import { ChatMessageList } from "./ChatMessageList";
 import { ChatProfileBar } from "./ChatProfileBar";
-import { createUserMessage, mergeMessages } from "./messageUtils";
+import { appendMessages, createUserMessage, mergeMessages } from "./messageUtils";
 
 export function ChatScreen() {
   const router = useRouter();
@@ -92,7 +92,7 @@ export function ChatScreen() {
     )));
     try {
       const reply = await chatApi.send(content);
-      setMessages((current) => mergeMessages(
+      setMessages((current) => appendMessages(
         current
           .filter((item) => !(replacingAssistantError && item.id === message.id))
           .map((item) => item.id === message.id ? { ...item, status: "success" } : item),
@@ -113,7 +113,8 @@ export function ChatScreen() {
     if (!content || sending) return;
     const userMessage = createUserMessage(content);
     setDraft("");
-    setMessages((current) => mergeMessages(current, [userMessage]));
+    // 사용자 질문을 먼저 추가해 AI 답변이 항상 해당 질문 다음에 표시되도록 합니다.
+    setMessages((current) => appendMessages(current, [userMessage]));
     scrollToBottom();
     await sendExisting(userMessage);
   }

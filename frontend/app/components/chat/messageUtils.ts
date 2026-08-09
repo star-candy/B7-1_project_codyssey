@@ -18,6 +18,17 @@ export function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]) {
   );
 }
 
+export function appendMessages(current: ChatMessage[], incoming: ChatMessage[]) {
+  // 실시간 메시지는 브라우저와 서버의 시간대 차이에 영향받지 않도록 수신 순서대로 추가합니다.
+  const messages = [...current];
+  incoming.forEach((message) => {
+    const existingIndex = messages.findIndex((item) => item.id === message.id);
+    if (existingIndex >= 0) messages[existingIndex] = message;
+    else messages.push(message);
+  });
+  return messages;
+}
+
 export function createUserMessage(content: string): ChatMessage {
   const createdAt = new Date();
   return {
