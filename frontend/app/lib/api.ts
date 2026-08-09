@@ -25,9 +25,8 @@ type ChatRecordResponse = {
 };
 
 type AuthResult = {
-  access_token?: string;
-  accessToken?: string;
-  token_type?: string;
+  access_token: string;
+  token_type: "bearer";
 };
 
 export class ApiError extends Error {
@@ -68,20 +67,9 @@ const createId = (prefix: string) =>
 
 function tokenFrom(payload: unknown): string | undefined {
   if (!payload || typeof payload !== "object") return undefined;
-  const value = payload as Record<string, unknown>;
-  const data =
-    value.data && typeof value.data === "object"
-      ? (value.data as Record<string, unknown>)
-      : undefined;
-  // FastAPI의 snake_case 응답과 기존 camelCase 응답을 모두 지원합니다.
-  const token =
-    value.access_token ??
-    value.accessToken ??
-    value.token ??
-    data?.access_token ??
-    data?.accessToken ??
-    data?.token;
-  return typeof token === "string" ? token : undefined;
+  // 확정된 FastAPI 인증 응답의 access_token만 사용합니다.
+  const { access_token } = payload as Partial<AuthResult>;
+  return typeof access_token === "string" ? access_token : undefined;
 }
 
 async function readJson(response: Response): Promise<unknown> {
