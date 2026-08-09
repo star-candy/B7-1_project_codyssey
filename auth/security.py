@@ -21,20 +21,61 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     except Exception:
         return False
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """주어진 데이터(페이로드)를 바탕으로 JWT Access Token을 생성합니다."""
+def create_token(data: dict, type: str, expires_delta: Optional[timedelta] = None) -> str:
+    """주어진 데이터(페이로드)를 바탕으로 JWT 토큰을 생성합니다."""
     to_encode = data.copy()
+    to_encode.update({"type": type})
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
-    
+        if type == "access":
+            expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
+        else:
+            # Refresh Token은 보통 7일 이상으로 길게 설정
+            refresh_expire_days = getattr(settings, "refresh_token_expire_days", 7)
+            expire = datetime.now(timezone.utc) + timedelta(days=refresh_expire_days)
+
     # 토큰 만료 시간 추가
     to_encode.update({"exp": expire})
     # 시크릿 키와 알고리즘을 사용해 토큰 생성
     encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
     return encoded_jwt
 
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """주어진 데이터(페이로드)를 바탕으로 JWT Access Token을 생성합니다."""
+    return create_token(data, "access", expires_delta)
+
+# Refresh Token 생성 (신규 추가)
+def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    return create_token(data, "refresh", expires_delta)
+
+# Refresh Token 검증 함수 (신규 추가)
+def verify_refresh_token(token: str) -> str:
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        
+        # 1. 토큰 타입 검증 (Access Token을 가지고 재발급을 시도하는 것 방지)
+        if payload.get("type") != "refresh":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token type for refresh",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # 2. 사용자 ID(username) 추출
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+            )
+        return username
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 # FastAPI의 보안 의존성 처리 객체 (토큰을 얻는 엔드포인트 URL 지정)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
@@ -49,8 +90,14 @@ def get_current_user(token: str = Depends(oauth2_scheme), db = Depends(get_db)):
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        # 토큰 디코딩 및 검증 (이전 스텝에서 만든 SECRET_KEY, ALGORITHM 변수 활용)
+        # 토큰 디코딩 및 검증
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        
+        # 🔒 [필수 추가] 토큰 타입 검사: Access Token인지 확인
+        token_type = payload.get("type")
+        if token_type != "access":
+            raise credentials_exception
+
         username = payload.get("sub")
         if username is None:
             raise credentials_exception
