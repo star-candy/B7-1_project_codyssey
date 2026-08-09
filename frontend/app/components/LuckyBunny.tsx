@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, FormEvent, useEffect, useState } from "react";
+import { CSSProperties, FormEvent, KeyboardEvent, useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { authApi } from "../lib/api";
@@ -221,4 +221,135 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
   );
 }
 
+type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+};
+
+function formatTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+export function ChatScreen() {
+  const router = useRouter();
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      id: "welcome",
+      role: "assistant",
+      content: "안녕하세요! 저는 Lucky예요. 오늘은 무엇을 도와드릴까요?",
+      createdAt: new Date().toISOString(),
+    },
+  ]);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    authApi.restore().then((authenticated) => {
+      if (!active) return;
+      if (!authenticated) router.replace("/login");
+      else setCheckingAuth(false);
+    });
+    return () => { active = false; };
+  }, [router]);
+
+  async function handleSend() {
+    const content = draft.trim();
+    if (!content || sending) return;
+    const createdAt = new Date();
+    setDraft("");
+    setSending(true);
+    setMessages((current) => [...current, {
+      id: `user-${createdAt.getTime()}`,
+      role: "user",
+      content,
+      createdAt: createdAt.toISOString(),
+    }]);
+    await new Promise((resolve) => window.setTimeout(resolve, 650));
+    setMessages((current) => [...current, {
+      id: `assistant-${Date.now()}`,
+      role: "assistant",
+      content: "좋아요! 실제 AI 답변은 백엔드 API 명세가 준비되면 이 위치에 연결돼요. 🍀",
+      createdAt: new Date().toISOString(),
+    }]);
+    setSending(false);
+  }
+
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      handleSend();
+    }
+  }
+
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await authApi.logout();
+    } finally {
+      router.replace("/login");
+    }
+  }
+
+  if (checkingAuth) return <AppLoading label="Lucky를 만나러 가고 있어요" />;
+
+  return (
+    <main className="page-shell chat-page">
+      <PageDecor />
+      <section className="chat-window pixel-window" aria-label="Lucky Bunny AI 채팅">
+        <WindowTitlebar variant="chat" />
+        <div className="chat-profilebar">
+          <div className="chat-identity">
+            <BunnyAvatar profile />
+            <div><strong>LUCKY BUNNY</strong><span className="online"><i />ONLINE</span></div>
+          </div>
+          <button className="logout-button sprite-button" type="button" onClick={handleLogout} disabled={loggingOut} aria-label="로그아웃">
+            <Sprite x={1338} y={247} width={129} height={46} className="logout-sprite" />
+          </button>
+        </div>
+
+        <div className="chat-body" aria-live="polite">
+          {messages.map((message) => <MessageBubble key={message.id} message={message} />)}
+          {sending && <div className="typing-row"><BunnyAvatar /><div className="typing-bubble"><div className="typing-dots"><i /><i /><i /></div></div></div>}
+        </div>
+
+        <div className="composer-wrap">
+          <PixelAsset src="/assets/final-sprites/decor-clover.png" width={74} height={76} className="composer-clover" />
+          <label className="sr-only" htmlFor="chat-message">메시지</label>
+          <textarea id="chat-message" rows={1} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder="메시지를 입력해 주세요" disabled={sending} />
+          <button className="send-button sprite-button" type="button" onClick={handleSend} disabled={!draft.trim() || sending} aria-label="전송">
+            <PixelAsset src="/assets/final-sprites/send-carrot.png" width={124} height={63} className="send-sprite" />
+          </button>
+        </div>
+        <FooterBar variant="chat" />
+      </section>
+    </main>
+  );
+}
+
+function MessageBubble({ message }: { message: ChatMessage }) {
+  const isUser = message.role === "user";
+  return (
+    <article className={`message-row ${isUser ? "user-message" : "assistant-message"}`}>
+      <div className="message-avatar">{isUser ? <CarrotAvatar /> : <BunnyAvatar />}</div>
+      <div className="message-column">
+        <div className="message-meta"><strong>{isUser ? "" : "LUCKY BUNNY"}</strong><time dateTime={message.createdAt}>{formatTime(message.createdAt)}</time></div>
+        <div className="message-bubble">
+          {message.content.split("\n").map((line, index) => <span key={`${message.id}-${index}`}>{line}</span>)}
+        </div>
+      </div>
+    </article>
+  );
+}
 
