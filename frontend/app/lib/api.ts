@@ -41,6 +41,7 @@ export class ApiError extends Error {
   }
 }
 
+// API 주소가 비어 있으면 백엔드 없이 화면을 확인할 수 있는 데모 모드로 동작합니다.
 const rawApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
 const apiBaseUrl = rawApiBaseUrl?.replace(/\/$/, "") ?? "";
 const isMockMode = !apiBaseUrl;
@@ -54,7 +55,9 @@ const endpoints = {
   history: "/me/chats",
 } as const;
 
+// Access Token은 브라우저 저장소에 남기지 않고 현재 탭의 메모리에만 보관합니다.
 let accessToken: string | null = null;
+// 동시에 여러 요청이 401을 받아도 토큰 갱신 요청은 한 번만 실행합니다.
 let refreshPromise: Promise<boolean> | null = null;
 
 const delay = (milliseconds: number) =>
@@ -119,6 +122,7 @@ async function performTokenRefresh() {
     return active;
   }
 
+  // HttpOnly Refresh Token은 JavaScript로 읽지 않고 쿠키로만 전송합니다.
   const response = await fetch(`${apiBaseUrl}${endpoints.refresh}`, {
     method: "POST",
     credentials: "include",
@@ -158,6 +162,7 @@ async function request<T>(
     credentials: "include",
   });
 
+  // Access Token 만료 시 갱신한 뒤 실패한 요청을 한 번만 다시 보냅니다.
   if (response.status === 401 && retryAfterRefresh) {
     const refreshed = await refreshAccessToken();
     if (refreshed) return request<T>(path, init, false);
@@ -174,6 +179,7 @@ async function request<T>(
   return payload as T;
 }
 
+// API 서버 없이 페이지네이션과 채팅 UI를 확인하기 위한 데모 데이터입니다.
 const mockMessages: ChatMessage[] = [
   ["assistant", "안녕하세요! 저는 Lucky예요. 오늘은 무엇을 도와드릴까요?"],
   ["user", "오늘 해야 할 일을 정리하고 싶어."],
@@ -277,6 +283,7 @@ export const authApi = {
     );
     accessToken = tokenFrom(payload) ?? null;
     if (!accessToken) {
+      // 회원가입 응답에는 토큰이 없으므로 가입 성공 후 로그인합니다.
       await authApi.login(username, password);
     }
   },

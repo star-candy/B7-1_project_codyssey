@@ -15,6 +15,7 @@ export function PixelAsset({
   className = "",
   alt = "",
 }: PixelAssetProps) {
+  // 픽셀 아트가 흐려지지 않도록 Next.js 이미지 최적화를 사용하지 않습니다.
   return (
     <Image
       className={`pixel-asset ${className}`}
