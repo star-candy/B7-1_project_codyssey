@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, OAuth2PasswordBearer, HTTPBearer
 from jose import JWTError, jwt
 import bcrypt
 
@@ -78,12 +78,16 @@ def verify_refresh_token(token: str) -> str:
         )
 
 # FastAPI의 보안 의존성 처리 객체 (토큰을 얻는 엔드포인트 URL 지정)
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
+# oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
+security_scheme = HTTPBearer()
 
-def get_current_user(token: str = Depends(oauth2_scheme), db = Depends(get_db)):
+def get_current_user(
+        auth: HTTPAuthorizationCredentials = Depends(security_scheme),
+        db = Depends(get_db)):
     """
     클라이언트가 보낸 JWT 토큰을 검증하고, 유효한 경우 현재 로그인된 사용자 객체를 반환합니다.
     """
+    token = auth.credentials
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
